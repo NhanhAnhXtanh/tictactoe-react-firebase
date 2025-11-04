@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ensureAnon } from "../firebase";
 import {
   listenRoom, joinRoom, leaveRoom, placeMove,
-  startRound, setReady, type Room
+  startRound, setReady, offerDraw, respondDraw, surrender, type Room
 } from "../services/roomService";
 import GameBoard from "../components/game/GameBoard";
 
@@ -15,21 +15,32 @@ export default function GamePage() {
   const nav = useNavigate();
   const meName = useMemo(()=>localStorage.getItem("player-name") || "Player", []);
   const [room, setRoom] = useState<Room|null>(null);
-  const [side, setSide] = useState<"X"|"O"|null>(null);
+  const [myUid, setMyUid] = useState<string|null>(null);
   const [joinError, setJoinError] = useState<string|null>(null);
+  const [showWinModal, setShowWinModal] = useState(false);
+  const [winActionsEnabled, setWinActionsEnabled] = useState(false);
+  const [winCountdown, setWinCountdown] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const mySide = useMemo<"X"|"O"|null>(() => {
+    if (!room || !myUid) return null;
+    if (room.players?.X?.uid === myUid) return "X";
+    if (room.players?.O?.uid === myUid) return "O";
+    return null;
+  }, [room, myUid]);
 
   useEffect(() => {
     let off: (()=>void)|null = null;
     (async () => {
       const me = await ensureAnon(meName);
+      setMyUid(me.uid);
       try {
-        const s = await joinRoom(roomId!, me.uid, me.displayName || meName, pw);
-        setSide(s);
+        await joinRoom(roomId!, me.uid, me.displayName || meName, pw);
         setJoinError(null);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Không thể tham gia phòng.";
         setJoinError(msg);
-        setSide(null);
       }
       off = listenRoom(roomId!, setRoom);
     })();
@@ -37,94 +48,336 @@ export default function GamePage() {
   }, [roomId, pw, meName]);
 
   async function onMove(r:number, c:number) {
-    if (!room || !side) return;
+    if (!room || !mySide) return;
     if (room.status !== "PLAYING") return;
-    await placeMove(roomId!, side, r, c);
+    await placeMove(roomId!, mySide, r, c);
   }
 
   async function onReadyClick() {
-    if (!side || !room) return;
-    const myReady = room.players?.[side]?.ready ?? false;
-    await setReady(roomId!, side, !myReady);
+    if (!mySide || !room) return;
+    const currentReady = room.players?.[mySide]?.ready ?? false;
+    await setReady(roomId!, mySide, !currentReady);
   }
 
-  async function onPlayAgain() { await startRound(roomId!); }
-  async function onLeave() { if (side) await leaveRoom(roomId!, side); nav("/"); }
+  async function onRematchVote(ready: boolean) {
+    if (!mySide || !room) return;
+    await setReady(roomId!, mySide, ready);
+  }
+
+  async function onOfferDrawClick() {
+    if (!mySide || !room) return;
+    await offerDraw(roomId!, mySide);
+  }
+
+  async function onRespondDrawClick(accept: boolean) {
+    if (!mySide || !room) return;
+    await respondDraw(roomId!, mySide, accept);
+  }
+
+  async function onSurrenderClick() {
+    if (!mySide || !room) return;
+    await surrender(roomId!, mySide);
+  }
+
+  async function onLeave() { if (mySide) await leaveRoom(roomId!, mySide); nav("/"); }
 
   const bothReady = !!room?.players?.X?.ready && !!room?.players?.O?.ready;
 
   useEffect(() => {
-    if (room && room.status==="LOBBY" && bothReady) startRound(roomId!);
-  }, [room, bothReady, roomId]);
+    if (!room || !mySide) return;
+    if ((room.status === "LOBBY" || room.status === "ROUND_END") && bothReady) {
+      startRound(roomId!);
+    }
+  }, [room, bothReady, roomId, mySide]);
+
+  useEffect(() => {
+    let showTimer: ReturnType<typeof setTimeout> | null = null;
+    let enableTimer: ReturnType<typeof setTimeout> | null = null;
+    let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+    if (room?.status === "ROUND_END") {
+      showTimer = setTimeout(() => {
+        setShowWinModal(true);
+        setWinActionsEnabled(false);
+        setWinCountdown(5);
+        countdownInterval = setInterval(() => {
+          setWinCountdown(prev => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+        enableTimer = setTimeout(() => {
+          setWinActionsEnabled(true);
+          setWinCountdown(0);
+          if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+          }
+        }, 5000);
+      }, 1000);
+    } else {
+      setShowWinModal(false);
+      setWinActionsEnabled(false);
+      setWinCountdown(0);
+    }
+
+    return () => {
+      if (showTimer) clearTimeout(showTimer);
+      if (enableTimer) clearTimeout(enableTimer);
+      if (countdownInterval) clearInterval(countdownInterval);
+    };
+  }, [room?.status]);
+
+  async function onCopyRoomId() {
+    if (!roomId) return;
+    try {
+      await navigator.clipboard.writeText(roomId);
+      setCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch (_) {
+      setCopied(false);
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   if (!room) return <div className="p-6">Đang tải phòng…</div>;
-
   const playerX = room.players?.X ?? null;
   const playerO = room.players?.O ?? null;
+  const winningLine = room.winningLine ?? null;
+  const winnerName = room.winner === "X" ? playerX?.name : room.winner === "O" ? playerO?.name : null;
+  const myReady = mySide ? room.players?.[mySide]?.ready ?? false : false;
+  const drawOfferFrom = room.drawOffer?.from ?? null;
+  const drawOfferedByMe = !!mySide && drawOfferFrom === mySide;
+  const drawPendingForMe = !!mySide && drawOfferFrom !== null && drawOfferFrom !== mySide;
+  const drawPending = drawOfferFrom !== null;
+  const resultType = room.endedBy?.type ?? (room.winner ? "WIN" : null);
+  const resultBy = room.endedBy?.by ?? null;
+  const surrenderedName =
+    resultType === "SURRENDER"
+      ? (resultBy === "X" ? (playerX?.name || "Người chơi X") :
+         resultBy === "O" ? (playerO?.name || "Người chơi O") : "Người chơi")
+      : null;
+  const resultMessage = (() => {
+    if (resultType === "DRAW") return "Ván đấu kết thúc với kết quả hoà.";
+    if (resultType === "SURRENDER") {
+      const winnerLabel = winnerName ?? (room.winner ? `Người chơi ${room.winner}` : "Đối thủ");
+      return `${winnerLabel} thắng (đối phương đầu hàng).`;
+    }
+    if (winnerName) return `${winnerName} thắng (${room.winner}).`;
+    if (room.winner) return `Người thắng: ${room.winner}.`;
+    return "Ván đấu kết thúc.";
+  })();
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Phòng {roomId}</h1>
-        <button className="px-3 py-2 rounded border" onClick={()=>navigator.clipboard.writeText(roomId!)}>Copy mã</button>
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 rounded-xl border p-6 bg-white">
-          <GameBoard board={room.board} onMove={onMove} lastMove={room.lastMove} />
-        </div>
-
-        <div className="space-y-4">
-          <div className="rounded-xl border p-4 bg-white">
-            <h3 className="font-semibold mb-2">Người chơi</h3>
-            <div className="p-2 rounded mb-2 bg-blue-50">
-              <div className="flex justify-between">
-                <span>X: {playerX?.name || "Trống"}</span>
-                <span>Score: {playerX?.score ?? 0}</span>
-              </div>
-            </div>
-            <div className="p-2 rounded bg-red-50">
-              <div className="flex justify-between">
-                <span>O: {playerO?.name || "Trống"}</span>
-                <span>Score: {playerO?.score ?? 0}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border p-4 bg-white space-y-3">
-            {room.status==="LOBBY" && (
-              <>
-                <div>Trạng thái: Phòng chờ</div>
-                {joinError && (
-                  <div className="text-sm text-red-600">{joinError}</div>
-                )}
-                {!joinError && !side && (
-                  <div className="text-sm text-gray-600">Phòng đã đủ người, bạn đang xem.</div>
-                )}
-                <button className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                        onClick={onReadyClick}
-                        disabled={!side}>
-                  {side && room.players?.[side]?.ready ? "Huỷ sẵn sàng" : "Sẵn sàng"}
-                </button>
-              </>
+    <>
+      {showWinModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl space-y-4 text-center">
+            <h2 className="text-xl font-semibold">Ván đấu kết thúc</h2>
+            <div className="text-lg font-medium">{resultMessage}</div>
+            {resultType === "SURRENDER" && surrenderedName && (
+              <div className="text-sm text-slate-600">Người đầu hàng: {surrenderedName}</div>
             )}
-
-            {room.status==="PLAYING" && (
-              <div>
-                <div>Đang chơi. Lượt: {room.turn==="X" ? playerX?.name : playerO?.name}</div>
-                <button className="px-4 py-2 rounded border mt-2" onClick={onLeave}>Rời phòng</button>
+            {!winActionsEnabled ? (
+              <div className="text-sm text-slate-600">
+                Tuỳ chọn sẽ xuất hiện sau {winCountdown}s
               </div>
-            )}
-
-            {room.status==="ROUND_END" && (
-              <div>
-                <div className="mb-2">Kết thúc ván. Thắng: {room.winner==="X" ? playerX?.name : playerO?.name}</div>
-                <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={onPlayAgain}>Chơi tiếp</button>
+            ) : (
+              <div className="space-y-4">
+                {mySide ? (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex justify-center gap-3">
+                      <button
+                        className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => onRematchVote(true)}
+                        disabled={!mySide || !winActionsEnabled || myReady}
+                      >
+                        {myReady ? "Đã sẵn sàng" : "Chơi tiếp"}
+                      </button>
+                      <button
+                        className="px-4 py-2 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => onRematchVote(false)}
+                        disabled={!mySide || !winActionsEnabled || !myReady}
+                      >
+                        Huỷ sẵn sàng
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-600">Đang chờ người chơi quyết định…</div>
+                )}
+                <div className="text-xs text-left text-slate-500 space-y-1">
+                  <div>
+                    • X: {playerX?.name || "Trống"} — {playerX?.ready ? "đã đồng ý" : "chưa đồng ý"}
+                  </div>
+                  <div>
+                    • O: {playerO?.name || "Trống"} — {playerO?.ready ? "đã đồng ý" : "chưa đồng ý"}
+                  </div>
+                </div>
+                <div className="flex justify-center">
+                  <button
+                    className="mt-2 px-3 py-2 rounded border hover:bg-slate-100"
+                    onClick={onLeave}
+                  >
+                    Rời phòng
+                  </button>
+                </div>
               </div>
             )}
           </div>
         </div>
+      )}
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Phòng {roomId}</h1>
+          <div className="flex items-center gap-2">
+            <button
+              className="px-3 py-2 rounded border hover:bg-slate-100"
+              onClick={onCopyRoomId}
+            >
+              {copied ? "Đã sao chép!" : "Copy mã"}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          <div className="md:col-span-2 rounded-xl border p-6 bg-white">
+            <GameBoard
+              board={room.board}
+              onMove={onMove}
+              lastMove={room.lastMove}
+              winningLine={winningLine ?? undefined}
+            />
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-xl border p-4 bg-white">
+              <h3 className="font-semibold mb-2">Người chơi</h3>
+              <div className="p-3 rounded mb-3 bg-blue-50">
+                <div className="flex justify-between">
+                  <span>X: {playerX?.name || "Trống"}</span>
+                  <span>Score: {playerX?.score ?? 0}</span>
+                </div>
+                <div className="text-xs text-slate-600 mt-1">
+                  {playerX
+                    ? (playerX.ready ? "Đã sẵn sàng" : "Chưa sẵn sàng")
+                    : "Chưa có người"}
+                </div>
+              </div>
+              <div className="p-3 rounded bg-red-50">
+                <div className="flex justify-between">
+                  <span>O: {playerO?.name || "Trống"}</span>
+                  <span>Score: {playerO?.score ?? 0}</span>
+                </div>
+                <div className="text-xs text-slate-600 mt-1">
+                  {playerO
+                    ? (playerO.ready ? "Đã sẵn sàng" : "Chưa sẵn sàng")
+                    : "Chưa có người"}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border p-4 bg-white space-y-3">
+              {room.status==="LOBBY" && (
+                <>
+                  <div>Trạng thái: Phòng chờ</div>
+                  {joinError && (
+                    <div className="text-sm text-red-600">{joinError}</div>
+                  )}
+                  {!joinError && !mySide && (
+                    <div className="text-sm text-gray-600">Phòng đã đủ người, bạn đang xem.</div>
+                  )}
+                  <button className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={onReadyClick}
+                          disabled={!mySide}>
+                    {myReady ? "Huỷ sẵn sàng" : "Sẵn sàng"}
+                  </button>
+                </>
+              )}
+
+              {room.status==="PLAYING" && (
+                <div className="space-y-3">
+                  <div>Đang chơi. Lượt: {room.turn==="X" ? playerX?.name : playerO?.name}</div>
+                  <div className="text-sm text-slate-600">
+                    {mySide ? (room.turn === mySide ? "Đến lượt bạn." : "Chờ đối phương.") : "Bạn đang xem."}
+                  </div>
+                  {mySide ? (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        className="px-3 py-2 rounded border bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={onOfferDrawClick}
+                        disabled={drawPending}
+                      >
+                        Xin hoà
+                      </button>
+                      <button
+                        className="px-3 py-2 rounded border border-red-400 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={onSurrenderClick}
+                      >
+                        Đầu hàng
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-slate-500">Người xem không thể thao tác.</div>
+                  )}
+                  {drawOfferedByMe && (
+                    <div className="text-sm text-blue-600">Bạn đã đề nghị hoà. Đang chờ đối thủ phản hồi…</div>
+                  )}
+                  {drawPendingForMe && (
+                    <div className="space-y-2">
+                      <div className="text-sm text-slate-700">
+                        {drawOfferFrom === "X" ? (playerX?.name || "Người chơi X") : (playerO?.name || "Người chơi O")} muốn hoà.
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          className="px-3 py-2 rounded bg-emerald-500 text-white hover:bg-emerald-600"
+                          onClick={() => onRespondDrawClick(true)}
+                        >
+                          Đồng ý
+                        </button>
+                        <button
+                          className="px-3 py-2 rounded border hover:bg-slate-100"
+                          onClick={() => onRespondDrawClick(false)}
+                        >
+                          Từ chối
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {drawPending && !mySide && !drawPendingForMe && (
+                    <div className="text-sm text-slate-600">
+                      Đang có lời đề nghị hoà chờ xử lý.
+                    </div>
+                  )}
+                  <button className="px-4 py-2 rounded border" onClick={onLeave}>Rời phòng</button>
+                </div>
+              )}
+
+              {room.status==="ROUND_END" && (
+                <div className="space-y-3">
+                  <div>{resultMessage}</div>
+                  {resultType === "SURRENDER" && surrenderedName && (
+                    <div className="text-sm text-slate-600">
+                      Người đầu hàng: {surrenderedName}.
+                    </div>
+                  )}
+                  <div className="text-sm text-slate-600">
+                    Chờ cả hai chọn "Chơi tiếp" để bắt đầu ván mới.
+                  </div>
+                  <div className="text-xs text-slate-600 space-y-1">
+                    <div>• X: {playerX?.ready ? "đã sẵn sàng" : "chưa sẵn sàng"}</div>
+                    <div>• O: {playerO?.ready ? "đã sẵn sàng" : "chưa sẵn sàng"}</div>
+                  </div>
+                  <button className="px-4 py-2 rounded border" onClick={onLeave}>Rời phòng</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -18,7 +18,7 @@ export default function LobbyPage() {
     if (!playerName.trim()) return;
     localStorage.setItem("player-name", playerName);
     await ensureAnon(playerName);
-    const id = await createRoom("Phòng 16x16", password || undefined);
+    const id = await createRoom("Phòng 20x20", password || undefined);
     const url = password
       ? `/game/${id}?pw=${encodeURIComponent(password)}`
       : `/game/${id}`;
@@ -33,7 +33,7 @@ export default function LobbyPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <h1 className="text-4xl font-bold">Gomoku 16×16</h1>
+      <h1 className="text-4xl font-bold">Gomoku 20×20</h1>
 
       <div className="grid md:grid-cols-2 gap-6">
         <div className="rounded-xl border p-6 bg-white">

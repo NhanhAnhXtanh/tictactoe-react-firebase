@@ -3,7 +3,7 @@ import {
   ref, set, get, update, onValue, runTransaction, serverTimestamp, off
 } from "firebase/database";
 import { nanoid } from "nanoid";
-import { emptyBoard, checkWin, SIZE, type Cell } from "./gameLogic";
+import { emptyBoard, findWinningLine, SIZE, type Cell, type BoardCoord } from "./gameLogic";
 
 export type RoomStatus = "LOBBY" | "PLAYING" | "ROUND_END" | "DECISION" | "CLOSED";
 
@@ -25,8 +25,9 @@ export interface Room {
   winner: "X" | "O" | null;
   players: { X: Player | null; O: Player | null };
   lastMove: { r: number; c: number; by: "X" | "O" } | null;
-  roundStarter: "X" | "O";
-  nextStarter: "X" | "O";
+  winningLine: BoardCoord[] | null;
+  drawOffer: { from: "X" | "O" } | null;
+  endedBy: { type: "WIN" | "DRAW" | "SURRENDER"; by: "X" | "O" | null } | null;
   createdAt: number | object;
   updatedAt: number | object;
 }
@@ -45,8 +46,9 @@ export async function createRoom(name: string, password?: string) {
     winner: null,
     players: { X: null, O: null },
     lastMove: null,
-    roundStarter: "X",
-    nextStarter: "X",
+    winningLine: null,
+    drawOffer: null,
+    endedBy: null,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -96,19 +98,81 @@ export async function setReady(roomId: string, side: "X" | "O", ready: boolean) 
   });
 }
 
+export async function offerDraw(roomId: string, side: "X" | "O") {
+  const roomRef = ref(db, `rooms/${roomId}`);
+  await runTransaction(roomRef, (room: Room | null) => {
+    if (!room) return room;
+    if (room.status !== "PLAYING") return room;
+    if (room.drawOffer) return room;
+    room.drawOffer = { from: side };
+    room.updatedAt = serverTimestamp() as unknown as number;
+    return room;
+  });
+}
+
+export async function respondDraw(roomId: string, side: "X" | "O", accept: boolean) {
+  const roomRef = ref(db, `rooms/${roomId}`);
+  await runTransaction(roomRef, (room: Room | null) => {
+    if (!room) return room;
+    if (room.status !== "PLAYING") return room;
+    if (!room.drawOffer) return room;
+    if (room.drawOffer.from === side) return room;
+
+    if (accept) {
+      room.status = "ROUND_END";
+      room.winner = null;
+      room.winningLine = null;
+      room.endedBy = { type: "DRAW", by: room.drawOffer.from };
+      if (room.players?.X) room.players.X.score = (room.players.X.score ?? 0) + 1;
+      if (room.players?.O) room.players.O.score = (room.players.O.score ?? 0) + 1;
+    }
+
+    room.drawOffer = null;
+    room.updatedAt = serverTimestamp() as unknown as number;
+    return room;
+  });
+}
+
+export async function surrender(roomId: string, side: "X" | "O") {
+  const roomRef = ref(db, `rooms/${roomId}`);
+  await runTransaction(roomRef, (room: Room | null) => {
+    if (!room) return room;
+    if (room.status !== "PLAYING") return room;
+    const opponent = side === "X" ? "O" : "X";
+    room.status = "ROUND_END";
+    room.winner = opponent;
+    room.winningLine = null;
+    room.drawOffer = null;
+    room.endedBy = { type: "SURRENDER", by: side };
+    if (room.players?.[opponent]) {
+      room.players[opponent]!.score = (room.players[opponent]!.score ?? 0) + 1;
+    }
+    room.updatedAt = serverTimestamp() as unknown as number;
+    return room;
+  });
+}
+
 export async function startRound(roomId: string) {
   const roomRef = ref(db, `rooms/${roomId}`);
   await runTransaction(roomRef, (room: Room | null) => {
     if (!room) return room;
-    const nextStarter = room.nextStarter ?? "X";
+    if (!room.players) room.players = { X: null, O: null };
+    if (room.status === "PLAYING") return room;
+    if (room.status !== "LOBBY" && room.status !== "ROUND_END") return room;
+    const haveBoth = !!room.players.X && !!room.players.O;
+    if (haveBoth) {
+      const prevX = room.players.X;
+      room.players.X = room.players.O;
+      room.players.O = prevX;
+    }
     room.board = emptyBoard();
-    room.turn = nextStarter;
-    room.roundStarter = nextStarter;
-    room.nextStarter = nextStarter === "X" ? "O" : "X";
+    room.turn = "X";
     room.status = "PLAYING";
     room.winner = null;
     room.lastMove = null;
-    if (!room.players) room.players = { X: null, O: null };
+    room.winningLine = null;
+    room.drawOffer = null;
+    room.endedBy = null;
     if (room.players.X) room.players.X.ready = false;
     if (room.players.O) room.players.O.ready = false;
     room.updatedAt = serverTimestamp() as unknown as number;
@@ -140,14 +204,19 @@ export async function placeMove(roomId: string, side: "X" | "O", r: number, c: n
     room.board = b as Cell[][];
     room.lastMove = { r, c, by: side };
 
-    const won = checkWin(room.board, r, c, side);
-    if (won) {
+    const winLine = findWinningLine(room.board, r, c, side);
+    if (winLine) {
       room.winner = side;
       room.status = "ROUND_END";
+      room.winningLine = winLine;
+      room.endedBy = { type: "WIN", by: side };
       if (room.players[side]) room.players[side]!.score = (room.players[side]!.score ?? 0) + 1;
     } else {
       room.turn = side === "X" ? "O" : "X";
+      room.winningLine = null;
+      room.endedBy = null;
     }
+    room.drawOffer = null;
     room.updatedAt = serverTimestamp() as unknown as number;
     return room;
   });
