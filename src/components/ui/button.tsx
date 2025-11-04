@@ -1,5 +1,5 @@
-import { ButtonHTMLAttributes } from "react";
-
+import type { ButtonHTMLAttributes } from "react";
+// phần còn lại giữ nguyên
 export function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "outline" }) {
   const base = "px-4 py-2 rounded-md text-sm font-medium transition";
   const solid = "bg-blue-600 hover:bg-blue-700 text-white";

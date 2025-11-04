@@ -36,8 +36,8 @@ export default function GameBoard({
                     ${v === "." ? "hover:bg-amber-200 cursor-pointer" : "cursor-not-allowed"}
                   `}
                 >
-                  {isX && <div className="w-6 h-6 bg-blue-500 rounded-full"></div>}
-                  {isO && <div className="w-6 h-6 bg-red-500 rounded-full"></div>}
+                  {isX && <span className="text-xl font-semibold text-slate-800">X</span>}
+                  {isO && <span className="text-xl font-semibold text-slate-800">O</span>}
                   {isLast && <div className="absolute inset-0 ring-2 ring-green-500 rounded-sm pointer-events-none"></div>}
                 </button>
               );
@@ -46,7 +46,7 @@ export default function GameBoard({
         </div>
       </div>
       <div className="text-sm text-gray-600 text-center">
-        <p>X: Xanh | O: Đỏ | 5 liên tiếp để thắng</p>
+        <p>X/O: đạt 5 ký hiệu liên tiếp để thắng</p>
       </div>
     </div>
   );

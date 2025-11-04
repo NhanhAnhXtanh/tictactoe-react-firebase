@@ -25,6 +25,8 @@ export interface Room {
   winner: "X" | "O" | null;
   players: { X: Player | null; O: Player | null };
   lastMove: { r: number; c: number; by: "X" | "O" } | null;
+  roundStarter: "X" | "O";
+  nextStarter: "X" | "O";
   createdAt: number | object;
   updatedAt: number | object;
 }
@@ -43,6 +45,8 @@ export async function createRoom(name: string, password?: string) {
     winner: null,
     players: { X: null, O: null },
     lastMove: null,
+    roundStarter: "X",
+    nextStarter: "X",
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -93,15 +97,22 @@ export async function setReady(roomId: string, side: "X" | "O", ready: boolean) 
 }
 
 export async function startRound(roomId: string) {
-  await update(ref(db, `rooms/${roomId}`), {
-    status: "PLAYING",
-    board: emptyBoard(),
-    turn: "X",
-    winner: null,
-    lastMove: null,
-    "players/X/ready": false,
-    "players/O/ready": false,
-    updatedAt: serverTimestamp()
+  const roomRef = ref(db, `rooms/${roomId}`);
+  await runTransaction(roomRef, (room: Room | null) => {
+    if (!room) return room;
+    const nextStarter = room.nextStarter ?? "X";
+    room.board = emptyBoard();
+    room.turn = nextStarter;
+    room.roundStarter = nextStarter;
+    room.nextStarter = nextStarter === "X" ? "O" : "X";
+    room.status = "PLAYING";
+    room.winner = null;
+    room.lastMove = null;
+    if (!room.players) room.players = { X: null, O: null };
+    if (room.players.X) room.players.X.ready = false;
+    if (room.players.O) room.players.O.ready = false;
+    room.updatedAt = serverTimestamp() as unknown as number;
+    return room;
   });
 }
 
