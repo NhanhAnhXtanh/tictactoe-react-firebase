@@ -81,3 +81,24 @@ firebase-debug.*
 *.pid
 *.seed
 *.tgz
+
+# Firebase configs
+.firebase/
+.firebaserc
+firebase.json
+database.rules.json
+
+# ==============
+# PRIVATE CONFIGS (chỉ xem code, không chạy được)
+# ==============
+.env
+.env.local
+.env.development.local
+.env.production.local
+.firebaserc
+firebase.json
+database.rules.json
+storage.rules
+supabase/config.*
+supabase/.env
+config/*
