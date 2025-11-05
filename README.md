@@ -1,6 +1,6 @@
-# 🧩 TicTacToe 16×16 (Gomoku) – React + Firebase Realtime DB
+# 🧩 TicTacToe 20×20 (Gomoku) – React + Firebase Realtime DB
 
-**Gomoku 16×16, thắng 5** theo hàng/ngang/chéo. 2 người/1 phòng, có thể đặt mật khẩu. Cả hai **Sẵn sàng** để bắt đầu; khi **kết thúc ván** có nút **Chơi tiếp** (giữ **tỉ số**, reset **bàn cờ**). Frontend: **React + Vite + TypeScript + Tailwind CSS**, realtime bằng **Firebase Realtime Database**, deploy **Firebase Hosting**.
+**Gomoku 20×20, thắng 5** theo hàng/ngang/chéo. 2 người/1 phòng, có thể đặt mật khẩu. Cả hai **Sẵn sàng** để bắt đầu; khi **kết thúc ván** có nút **Chơi tiếp** (giữ **tỉ số**, reset **bàn cờ**). Frontend: **React + Vite + TypeScript + Tailwind CSS**, realtime bằng **Firebase Realtime Database**, deploy **Firebase Hosting**.
 
 > **Demo/Hosting**: cập nhật đường dẫn của bạn (ví dụ `https://<your-site>.web.app` hoặc domain tùy chỉnh).
 
@@ -8,7 +8,7 @@
 
 ## ✨ Tính năng chính
 
-* Bàn cờ **16×16**, điều kiện thắng **5 liên tiếp** (ngang, dọc, chéo xuôi, chéo ngược).
+* Bàn cờ **20×20**, điều kiện thắng **5 liên tiếp** (ngang, dọc, chéo xuôi, chéo ngược).
 * **Phòng**: tạo phòng (tuỳ chọn mật khẩu), vào phòng bằng mã + mật khẩu (nếu có).
 * **2 người / 1 phòng**, slot **X** và **O**.
 * Trạng thái phòng: `LOBBY → PLAYING → ROUND_END`.
@@ -40,7 +40,7 @@
  │  │  └─ GamePage.tsx
  │  ├─ services/
  │  │  ├─ roomService.ts      // tạo/vào/phát sự kiện phòng, transactions, ready, play-again
- │  │  └─ gameLogic.ts        // SIZE=16, WIN=5, checkWin(), emptyBoard()
+ │  │  └─ gameLogic.ts        // SIZE=20, WIN=5, checkWin(), emptyBoard()
  │  ├─ firebase.ts            // init app + Realtime Database + Auth
  │  ├─ App.tsx
  │  ├─ main.tsx
@@ -132,11 +132,11 @@ Node chính: `/rooms/{roomId}`
 ```jsonc
 {
   "id": "ABC123",
-  "name": "Phòng 16x16",
+  "name": "Phòng 20x20",
   "hasPassword": true,
   "passwordHash": "<sha256>",
   "status": "LOBBY" | "PLAYING" | "ROUND_END",
-  "board": [[".", "X", ...], ...],  // 16x16
+  "board": [[".", "X", ...], ...],  // 20x20
   "turn": "X" | "O",
   "winner": "X" | "O" | null,
   "players": {
@@ -177,7 +177,7 @@ Node chính: `/rooms/{roomId}`
 
 ## 🧠 Game logic
 
-* **Kích thước**: `SIZE = 16`, **điều kiện thắng**: `WIN = 5`.
+* **Kích thước**: `SIZE = 20`, **điều kiện thắng**: `WIN = 5`.
 * Hàm `checkWin(board, r, c, me)` kiểm tra 4 hướng: `[(0,1), (1,0), (1,1), (1,-1)]`.
 * `startRound()` reset `board`, `turn="X"`, `winner=null`, giữ nguyên **score**.
 * `placeMove()` dùng transaction; nếu thắng → `status="ROUND_END"` và cộng điểm cho người thắng.
