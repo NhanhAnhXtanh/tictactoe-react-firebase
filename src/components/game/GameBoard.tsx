@@ -61,17 +61,17 @@ export default function GameBoard({
                       `}
                     >
                       {isX && (
-                        <span className="font-semibold text-blue-600 leading-none text-[clamp(0.95rem,4vw,1.6rem)] md:text-[clamp(1.1rem,2.5vw,1.9rem)]">
+                        <span className="flex items-center justify-center w-full h-full font-semibold text-blue-600 leading-none text-[clamp(0.95rem,4vw,1.6rem)] md:text-[clamp(1.1rem,2.5vw,1.9rem)]">
                           X
                         </span>
                       )}
                       {isO && (
-                        <span className="font-semibold text-red-500 leading-none text-[clamp(0.95rem,4vw,1.6rem)] md:text-[clamp(1.1rem,2.5vw,1.9rem)]">
+                        <span className="flex items-center justify-center w-full h-full font-semibold text-red-500 leading-none text-[clamp(0.95rem,4vw,1.6rem)] md:text-[clamp(1.1rem,2.5vw,1.9rem)]">
                           O
                         </span>
                       )}
                       {isLast && (
-                        <div className="absolute inset-0 ring-2 ring-emerald-500 rounded-sm pointer-events-none" />
+                        <div className="absolute inset-0 ring-2 ring-emerald-500 ring-inset rounded-sm pointer-events-none" />
                       )}
                     </button>
                   );

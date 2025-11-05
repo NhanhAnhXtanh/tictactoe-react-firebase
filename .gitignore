@@ -1,6 +1,6 @@
-# =====================
-# LOG FILES
-# =====================
+# ==============
+# LOGS
+# ==============
 logs
 *.log
 npm-debug.log*
@@ -9,55 +9,42 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# =====================
+# ==============
 # DEPENDENCIES
-# =====================
+# ==============
 node_modules/
+.pnp.cjs
+.pnp.loader.mjs
+.pnp.js
 
-# =====================
-# BUILD OUTPUT
-# =====================
+# ==============
+# BUILD / COVERAGE
+# ==============
 dist/
 dist-ssr/
 build/
 coverage/
+*.tsbuildinfo
 
-# =====================
-# ENVIRONMENT VARIABLES
-# =====================
+# ==============
+# ENV VARS
+# ==============
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
-*.local
+.env.*.local
 
-# =====================
-# FIREBASE CONFIGS
-# =====================
-.firebase/
-.firebaserc
-database.rules.json
-storage.rules
-firebase-debug.log
-firebase-debug.*
-firebase.json
-
-# =====================
-# VITE / TOOLING
-# =====================
+# ==============
+# TOOLING CACHES
+# ==============
 .vite/
 .eslintcache
 .cache/
 temp/
 .tmp/
-vite.config.ts.timestamp-*
-tailwind.config.js.timestamp-*
-postcss.config.js.timestamp-*
 
-# =====================
+# ==============
 # IDE / EDITOR
-# =====================
+# ==============
 .vscode/*
 !.vscode/extensions.json
 .idea/
@@ -67,16 +54,30 @@ postcss.config.js.timestamp-*
 *.sln
 *.sw?
 
-# =====================
-# SYSTEM FILES
-# =====================
+# ==============
+# SYSTEM
+# ==============
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# =====================
+# ==============
+# FIREBASE
+# (giữ firebase.json, .firebaserc, *rules để commit)
+# ==============
+firebase-debug.log
+firebase-debug.*
+.firebase/
+
+# ==============
+# OPTIONAL HOSTING (bật khi dùng)
+# ==============
+# .vercel/
+# .netlify/
+
+# ==============
 # MISC
-# =====================
+# ==============
 *.pid
 *.seed
 *.tgz

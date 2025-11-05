@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ensureAnon } from "../firebase";
 import {
   listenRoom, joinRoom, leaveRoom, placeMove,
-  startRound, setReady, offerDraw, respondDraw, surrender, type Room
+  startRound, setReady, offerDraw, respondDraw, surrender, sendMessage, type Room
 } from "../services/roomService";
 import GameBoard from "../components/game/GameBoard";
 
@@ -13,7 +13,18 @@ export default function GamePage() {
   const pw = sp.get("pw") || undefined;
 
   const nav = useNavigate();
-  const meName = useMemo(()=>localStorage.getItem("player-name") || "Player", []);
+  const meName = useMemo(() => {
+    const saved = localStorage.getItem("player-name");
+    if (saved && saved.trim()) return saved;
+    if (typeof window !== "undefined") {
+      const entered = window.prompt("Nhập tên của bạn")?.trim();
+      if (entered) {
+        localStorage.setItem("player-name", entered);
+        return entered;
+      }
+    }
+    return "Player";
+  }, []);
   const [room, setRoom] = useState<Room|null>(null);
   const [myUid, setMyUid] = useState<string|null>(null);
   const [joinError, setJoinError] = useState<string|null>(null);
@@ -22,6 +33,8 @@ export default function GamePage() {
   const [winCountdown, setWinCountdown] = useState(0);
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [chatDraft, setChatDraft] = useState("");
+  const chatListRef = useRef<HTMLDivElement | null>(null);
 
   const mySide = useMemo<"X"|"O"|null>(() => {
     if (!room || !myUid) return null;
@@ -35,6 +48,11 @@ export default function GamePage() {
     (async () => {
       const me = await ensureAnon(meName);
       setMyUid(me.uid);
+      if (me.displayName) {
+        localStorage.setItem("player-name", me.displayName);
+      } else if (meName) {
+        localStorage.setItem("player-name", meName);
+      }
       try {
         await joinRoom(roomId!, me.uid, me.displayName || meName, pw);
         setJoinError(null);
@@ -128,7 +146,10 @@ export default function GamePage() {
   async function onCopyRoomId() {
     if (!roomId) return;
     try {
-      await navigator.clipboard.writeText(roomId);
+      const origin = window.location.origin;
+      const base = `${origin}/game/${roomId}`;
+      const link = pw ? `${base}?pw=${encodeURIComponent(pw)}` : base;
+      await navigator.clipboard.writeText(link);
       setCopied(true);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
@@ -170,6 +191,46 @@ export default function GamePage() {
     if (room.winner) return `Người thắng: ${room.winner}.`;
     return "Ván đấu kết thúc.";
   })();
+  const messages = useMemo(() => {
+    const raw = room?.messages ?? {};
+    return Object.entries(raw)
+      .map(([id, msg]) => ({
+        id,
+        uid: msg?.uid ?? "",
+        name: msg?.name ?? "Người chơi",
+        text: msg?.text ?? "",
+        createdAt: typeof msg?.createdAt === "number" ? msg.createdAt : 0
+      }))
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .slice(-200);
+  }, [room?.messages]);
+  const myDisplayName = useMemo(() => {
+    if (mySide && room?.players?.[mySide]?.name) return room.players[mySide]!.name;
+    return meName;
+  }, [room?.players, mySide, meName]);
+
+  useEffect(() => {
+    if (!chatListRef.current) return;
+    chatListRef.current.scrollTop = chatListRef.current.scrollHeight;
+  }, [messages]);
+  const canChat = !!mySide;
+
+  async function onChatSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!roomId || !myUid) return;
+    const text = chatDraft.trim();
+    if (!text) return;
+    try {
+      await sendMessage(roomId, {
+        uid: myUid,
+        name: myDisplayName,
+        text
+      });
+      setChatDraft("");
+    } catch (_) {
+      // ignore errors for now
+    }
+  }
 
   return (
     <>
@@ -283,6 +344,10 @@ export default function GamePage() {
             <div className="rounded-xl border p-4 bg-white space-y-3">
               {room.status==="LOBBY" && (
                 <>
+
+            <div className="rounded-xl border p-4 bg-white space-y-3">
+              {room.status==="LOBBY" && (
+                <>
                   <div>Trạng thái: Phòng chờ</div>
                   {joinError && (
                     <div className="text-sm text-red-600">{joinError}</div>
@@ -374,6 +439,54 @@ export default function GamePage() {
                   <button className="px-4 py-2 rounded border" onClick={onLeave}>Rời phòng</button>
                 </div>
               )}
+            </div>
+
+            <div className="rounded-xl border p-4 bg-white flex flex-col h-80">
+              <h3 className="font-semibold mb-2">Trò chuyện</h3>
+              <div
+                ref={chatListRef}
+                className="flex-1 overflow-y-auto space-y-2 pr-1"
+              >
+                {messages.length === 0 && (
+                  <div className="text-sm text-slate-500">Chưa có tin nhắn.</div>
+                )}
+                {messages.map(msg => {
+                  const isMine = myUid === msg.uid;
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm shadow-sm ${
+                          isMine ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800"
+                        }`}
+                      >
+                        <div className="text-xs font-semibold opacity-75 mb-1">
+                          {isMine ? "Bạn" : msg.name || "Người chơi"}
+                        </div>
+                        <div className="whitespace-pre-wrap break-words">{msg.text}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <form onSubmit={onChatSubmit} className="pt-3 flex gap-2">
+                <input
+                  className="flex-1 rounded border px-3 py-2 text-sm"
+                  placeholder={canChat ? "Nhập tin nhắn..." : "Chỉ người trong phòng mới chat"}
+                  value={chatDraft}
+                  onChange={e => setChatDraft(e.target.value)}
+                  disabled={!canChat}
+                />
+                <button
+                  type="submit"
+                  className="px-3 py-2 rounded bg-blue-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!canChat || !chatDraft.trim()}
+                >
+                  Gửi
+                </button>
+              </form>
             </div>
           </div>
         </div>

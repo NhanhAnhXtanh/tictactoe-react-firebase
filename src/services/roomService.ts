@@ -1,6 +1,6 @@
 import { db } from "../firebase";
 import {
-  ref, set, get, update, onValue, runTransaction, serverTimestamp, off
+  ref, set, get, update, onValue, runTransaction, serverTimestamp, off, push
 } from "firebase/database";
 import { nanoid } from "nanoid";
 import { emptyBoard, findWinningLine, SIZE, type Cell, type BoardCoord } from "./gameLogic";
@@ -13,6 +13,16 @@ export interface Player {
   ready: boolean;
   score: number;
 }
+
+export interface ChatMessage {
+  id: string;
+  uid: string;
+  name: string;
+  text: string;
+  createdAt: number;
+}
+
+type ChatMessageRecord = Omit<ChatMessage, "id">;
 
 export interface Room {
   id: string;
@@ -28,6 +38,7 @@ export interface Room {
   winningLine: BoardCoord[] | null;
   drawOffer: { from: "X" | "O" } | null;
   endedBy: { type: "WIN" | "DRAW" | "SURRENDER"; by: "X" | "O" | null } | null;
+  messages?: Record<string, ChatMessageRecord>;
   createdAt: number | object;
   updatedAt: number | object;
 }
@@ -49,6 +60,7 @@ export async function createRoom(name: string, password?: string) {
     winningLine: null,
     drawOffer: null,
     endedBy: null,
+    messages: {},
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -95,6 +107,18 @@ export async function setReady(roomId: string, side: "X" | "O", ready: boolean) 
   await update(ref(db, `rooms/${roomId}`), {
     [`players/${side}/ready`]: ready,
     updatedAt: serverTimestamp()
+  });
+}
+
+export async function sendMessage(roomId: string, payload: { uid: string; name: string; text: string }) {
+  const msgRef = ref(db, `rooms/${roomId}/messages`);
+  const newRef = push(msgRef);
+  if (!newRef) return;
+  await set(newRef, {
+    uid: payload.uid,
+    name: payload.name,
+    text: payload.text,
+    createdAt: Date.now()
   });
 }
 
