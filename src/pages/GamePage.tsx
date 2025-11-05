@@ -164,6 +164,30 @@ export default function GamePage() {
     };
   }, []);
 
+  const messages = useMemo(() => {
+    const raw = room?.messages ?? {};
+    return Object.entries(raw)
+      .map(([id, msg]) => ({
+        id,
+        uid: msg?.uid ?? "",
+        name: msg?.name ?? "Người chơi",
+        text: msg?.text ?? "",
+        createdAt: typeof msg?.createdAt === "number" ? msg.createdAt : 0
+      }))
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .slice(-200);
+  }, [room?.messages]);
+  const myDisplayName = useMemo(() => {
+    if (mySide && room?.players?.[mySide]?.name) return room.players[mySide]!.name;
+    return meName;
+  }, [room?.players, mySide, meName]);
+
+  useEffect(() => {
+    if (!chatListRef.current) return;
+    chatListRef.current.scrollTop = chatListRef.current.scrollHeight;
+  }, [messages]);
+  const canChat = !!mySide;
+
   if (!room) return <div className="p-6">Đang tải phòng…</div>;
   const playerX = room.players?.X ?? null;
   const playerO = room.players?.O ?? null;
@@ -191,29 +215,6 @@ export default function GamePage() {
     if (room.winner) return `Người thắng: ${room.winner}.`;
     return "Ván đấu kết thúc.";
   })();
-  const messages = useMemo(() => {
-    const raw = room?.messages ?? {};
-    return Object.entries(raw)
-      .map(([id, msg]) => ({
-        id,
-        uid: msg?.uid ?? "",
-        name: msg?.name ?? "Người chơi",
-        text: msg?.text ?? "",
-        createdAt: typeof msg?.createdAt === "number" ? msg.createdAt : 0
-      }))
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .slice(-200);
-  }, [room?.messages]);
-  const myDisplayName = useMemo(() => {
-    if (mySide && room?.players?.[mySide]?.name) return room.players[mySide]!.name;
-    return meName;
-  }, [room?.players, mySide, meName]);
-
-  useEffect(() => {
-    if (!chatListRef.current) return;
-    chatListRef.current.scrollTop = chatListRef.current.scrollHeight;
-  }, [messages]);
-  const canChat = !!mySide;
 
   async function onChatSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -344,10 +345,6 @@ export default function GamePage() {
             <div className="rounded-xl border p-4 bg-white space-y-3">
               {room.status==="LOBBY" && (
                 <>
-
-            <div className="rounded-xl border p-4 bg-white space-y-3">
-              {room.status==="LOBBY" && (
-                <>
                   <div>Trạng thái: Phòng chờ</div>
                   {joinError && (
                     <div className="text-sm text-red-600">{joinError}</div>
@@ -355,9 +352,11 @@ export default function GamePage() {
                   {!joinError && !mySide && (
                     <div className="text-sm text-gray-600">Phòng đã đủ người, bạn đang xem.</div>
                   )}
-                  <button className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                          onClick={onReadyClick}
-                          disabled={!mySide}>
+                  <button
+                    className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={onReadyClick}
+                    disabled={!mySide}
+                  >
                     {myReady ? "Huỷ sẵn sàng" : "Sẵn sàng"}
                   </button>
                 </>
@@ -441,11 +440,11 @@ export default function GamePage() {
               )}
             </div>
 
-            <div className="rounded-xl border p-4 bg-white flex flex-col h-80">
+            <div className="rounded-xl border p-4 bg-white flex flex-col h-[min(55vh,22rem)] md:h-[28rem]">
               <h3 className="font-semibold mb-2">Trò chuyện</h3>
               <div
                 ref={chatListRef}
-                className="flex-1 overflow-y-auto space-y-2 pr-1"
+                className="flex-1 overflow-y-auto space-y-3 pr-1"
               >
                 {messages.length === 0 && (
                   <div className="text-sm text-slate-500">Chưa có tin nhắn.</div>
@@ -458,14 +457,16 @@ export default function GamePage() {
                       className={`flex ${isMine ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm shadow-sm ${
-                          isMine ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800"
+                        className={`max-w-[80%] rounded-xl px-3.5 py-2.5 text-sm shadow-sm ${
+                          isMine
+                            ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white"
+                            : "bg-slate-100 text-slate-800 border border-slate-200"
                         }`}
                       >
-                        <div className="text-xs font-semibold opacity-75 mb-1">
+                        <div className="text-xs font-semibold opacity-80 mb-1">
                           {isMine ? "Bạn" : msg.name || "Người chơi"}
                         </div>
-                        <div className="whitespace-pre-wrap break-words">{msg.text}</div>
+                        <div className="whitespace-pre-wrap break-words leading-relaxed">{msg.text}</div>
                       </div>
                     </div>
                   );
@@ -473,7 +474,7 @@ export default function GamePage() {
               </div>
               <form onSubmit={onChatSubmit} className="pt-3 flex gap-2">
                 <input
-                  className="flex-1 rounded border px-3 py-2 text-sm"
+                  className="flex-1 min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                   placeholder={canChat ? "Nhập tin nhắn..." : "Chỉ người trong phòng mới chat"}
                   value={chatDraft}
                   onChange={e => setChatDraft(e.target.value)}
@@ -481,7 +482,7 @@ export default function GamePage() {
                 />
                 <button
                   type="submit"
-                  className="px-3 py-2 rounded bg-blue-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-shrink-0 px-3.5 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium shadow-sm hover:bg-blue-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={!canChat || !chatDraft.trim()}
                 >
                   Gửi
