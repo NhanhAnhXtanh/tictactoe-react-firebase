@@ -74,6 +74,7 @@ export async function joinRoom(roomId: string, uid: string, name: string, passwo
   if (!snap.exists()) throw new Error("Phòng không tồn tại");
   const room = snap.val() as Room;
   const players = room.players ?? { X: null, O: null };
+  const normalizedName = name.trim() || "Player";
 
   if (room.hasPassword) {
     if (!password) throw new Error("Cần mật khẩu");
@@ -81,12 +82,28 @@ export async function joinRoom(roomId: string, uid: string, name: string, passwo
     if (!ok) throw new Error("Sai mật khẩu");
   }
 
+  const existingSlot =
+    players.X?.uid === uid ? "X" :
+    players.O?.uid === uid ? "O" :
+    null;
+
+  if (existingSlot) {
+    const updates: Record<string, unknown> = {
+      updatedAt: serverTimestamp()
+    };
+    if ((players as Record<string, Player | null>)[existingSlot]?.name !== normalizedName) {
+      updates[`players/${existingSlot}/name`] = normalizedName;
+    }
+    await update(roomRef, updates);
+    return existingSlot as "X" | "O";
+  }
+
   const slot = !players.X ? "X" : (!players.O ? "O" : null);
   if (!slot) throw new Error("Phòng đã đủ 2 người");
 
   const nextPlayers = {
     ...players,
-    [slot]: { uid, name, ready: false, score: 0 }
+    [slot]: { uid, name: normalizedName, ready: false, score: 0 }
   } as Room["players"];
 
   await update(roomRef, {
@@ -205,11 +222,26 @@ export async function startRound(roomId: string) {
 }
 
 export async function leaveRoom(roomId: string, side: "X" | "O") {
-  const r = ref(db, `rooms/${roomId}`);
-  await update(r, {
-    [`players/${side}`]: null,
-    status: "LOBBY",
-    updatedAt: serverTimestamp()
+  const roomRef = ref(db, `rooms/${roomId}`);
+  await runTransaction(roomRef, (room: Room | null) => {
+    if (!room) return room;
+    if (!room.players) room.players = { X: null, O: null };
+    const opponent = side === "X" ? "O" : "X";
+    room.players[side] = null;
+    if (room.players[opponent]) {
+      room.players[opponent]!.score = 0;
+      room.players[opponent]!.ready = false;
+    }
+    room.status = "LOBBY";
+    room.board = emptyBoard();
+    room.turn = "X";
+    room.winner = null;
+    room.lastMove = null;
+    room.winningLine = null;
+    room.drawOffer = null;
+    room.endedBy = null;
+    room.updatedAt = serverTimestamp() as unknown as number;
+    return room;
   });
 }
 

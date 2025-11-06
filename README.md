@@ -225,7 +225,7 @@ npm run build
 ```bash
 firebase login
 firebase use <project-id>
-firebase deploy --only hosting,database
+firebase deploy --only hosting
 ```
 
 > Nếu chỉ đổi frontend: `firebase deploy --only hosting`
