@@ -1,4 +1,4 @@
-// src/services/gameLogic.ts
+// src/games/tictactoe/logic/gameLogic.ts
 export type Cell = "." | "X" | "O";
 export const SIZE = 20;
 export const WIN = 5;

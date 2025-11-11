@@ -1,4 +1,4 @@
-import type { Player } from "../../services/roomService";
+import type { Player } from "../services/roomService";
 
 export default function PlayerCard({
   label, player, highlight, me

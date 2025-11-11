@@ -1,11 +1,12 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ensureAnon } from "../firebase";
+import { ensureAnon } from "../../shared/firebase";
 import {
   listenRoom, joinRoom, leaveRoom, placeMove,
   startRound, setReady, offerDraw, respondDraw, surrender, sendMessage, type Room
 } from "../services/roomService";
-import GameBoard from "../components/game/GameBoard";
+import { TIC_TAC_TOE_GAME_PATH, TIC_TAC_TOE_HOME_PATH } from "../constants";
+import GameBoard from "../components/GameBoard";
 
 export default function GamePage() {
   const { roomId } = useParams();
@@ -94,7 +95,10 @@ export default function GamePage() {
     await surrender(roomId!, mySide);
   }
 
-  async function onLeave() { if (mySide) await leaveRoom(roomId!, mySide); nav("/"); }
+  async function onLeave() {
+    if (mySide) await leaveRoom(roomId!, mySide);
+    nav(TIC_TAC_TOE_HOME_PATH);
+  }
 
   const bothReady = !!room?.players?.X?.ready && !!room?.players?.O?.ready;
 
@@ -144,7 +148,7 @@ export default function GamePage() {
     if (!roomId) return;
     try {
       const origin = window.location.origin;
-      const base = `${origin}/game/${roomId}`;
+      const base = `${origin}${TIC_TAC_TOE_GAME_PATH}/${roomId}`;
       const link = pw ? `${base}?pw=${encodeURIComponent(pw)}` : base;
       await navigator.clipboard.writeText(link);
       setCopied(true);

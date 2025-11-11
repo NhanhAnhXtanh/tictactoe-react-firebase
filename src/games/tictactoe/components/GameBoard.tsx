@@ -1,4 +1,4 @@
-import { type Cell, SIZE, type BoardCoord } from "../../services/gameLogic";
+import { type Cell, SIZE, type BoardCoord } from "../logic/gameLogic";
 
 export default function GameBoard({
   board,

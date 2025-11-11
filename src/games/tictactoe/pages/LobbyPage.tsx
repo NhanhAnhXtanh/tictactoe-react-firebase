@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ensureAnon } from "../firebase";
+import { ensureAnon } from "../../shared/firebase";
+import { TIC_TAC_TOE_GAME_PATH } from "../constants";
 import { createRoom } from "../services/roomService";
 
 export default function LobbyPage() {
@@ -19,16 +20,19 @@ export default function LobbyPage() {
     localStorage.setItem("player-name", playerName);
     await ensureAnon(playerName);
     const id = await createRoom("Phòng 20x20", password || undefined);
+    const base = `${TIC_TAC_TOE_GAME_PATH}/${id}`;
     const url = password
-      ? `/game/${id}?pw=${encodeURIComponent(password)}`
-      : `/game/${id}`;
+      ? `${base}?pw=${encodeURIComponent(password)}`
+      : base;
     nav(url);
   }
 
   function onJoin() {
     if (!playerName.trim() || !roomId.trim()) return;
     localStorage.setItem("player-name", playerName);
-    nav(`/game/${roomId.toUpperCase()}?pw=${encodeURIComponent(password)}`);
+    const base = `${TIC_TAC_TOE_GAME_PATH}/${roomId.toUpperCase()}`;
+    const url = password ? `${base}?pw=${encodeURIComponent(password)}` : base;
+    nav(url);
   }
 
   return (

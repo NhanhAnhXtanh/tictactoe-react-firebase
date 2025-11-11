@@ -1,9 +1,9 @@
-import { db } from "../firebase";
+import { db } from "../../shared/firebase";
 import {
   ref, set, get, update, onValue, runTransaction, serverTimestamp, off, push
 } from "firebase/database";
 import { nanoid } from "nanoid";
-import { emptyBoard, findWinningLine, SIZE, type Cell, type BoardCoord } from "./gameLogic";
+import { emptyBoard, findWinningLine, SIZE, type Cell, type BoardCoord } from "../logic/gameLogic";
 
 export type RoomStatus = "LOBBY" | "PLAYING" | "ROUND_END" | "DECISION" | "CLOSED";
 

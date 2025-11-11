@@ -1,4 +1,4 @@
-import type { Room } from "../../services/roomService";
+import type { Room } from "../services/roomService";
 import { Button } from "../ui/button";
 
 export default function GameStatus({
